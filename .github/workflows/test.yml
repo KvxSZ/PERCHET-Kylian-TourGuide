@@ -19,7 +19,7 @@ jobs:
         distribution: 'temurin'
         cache: maven
     - name: Build with Maven
-      run: mvn -B package -f TourGuide/pom.xml
+      run: mvn -B package --file TourGuide/pom.xml
 
   publish-job:
     runs-on: ubuntu-latest
