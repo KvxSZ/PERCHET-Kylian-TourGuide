@@ -2,6 +2,11 @@ package com.openclassrooms.tourguide.service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 
@@ -28,7 +33,11 @@ public class RewardsService {
 		this.gpsUtil = gpsUtil;
 		this.rewardsCentral = rewardCentral;
 	}
-	
+
+	public RewardCentral getRewardsCentral() {
+		return rewardsCentral;
+	}
+
 	public void setProximityBuffer(int proximityBuffer) {
 		this.proximityBuffer = proximityBuffer;
 	}
@@ -36,20 +45,19 @@ public class RewardsService {
 	public void setDefaultProximityBuffer() {
 		proximityBuffer = defaultProximityBuffer;
 	}
-	
-	public void calculateRewards(User user) {
-		List<VisitedLocation> userLocations = new ArrayList<>(user.getVisitedLocations());
-		List<Attraction> attractions = gpsUtil.getAttractions();
-		
-		for(VisitedLocation visitedLocation : userLocations) {
-			for(Attraction attraction : attractions) {
-				if(user.getUserRewards().stream().filter(r -> r.attraction.attractionName.equals(attraction.attractionName)).count() == 0) {
-					if(nearAttraction(visitedLocation, attraction)) {
-						user.addUserReward(new UserReward(visitedLocation, attraction, getRewardPoints(attraction, user)));
-					}
-				}
+
+
+	public CompletableFuture<Void> calculateRewards(User user){
+		return CompletableFuture.runAsync(() ->{
+			List<Attraction> attractions = gpsUtil.getAttractions();
+			List<VisitedLocation> userLocations = new CopyOnWriteArrayList<>(user.getVisitedLocations());
+			for(VisitedLocation visitedLocation : userLocations){
+				List<Attraction> nearAttractionFirstTime = attractions.stream()
+						.filter(a -> (nearAttraction(visitedLocation,a)) && (user.getUserRewards().stream().filter(r -> r.attraction.attractionName.equals(a.attractionName))).count() == 0)
+						.toList();
+				nearAttractionFirstTime.forEach(a -> user.addUserReward(new UserReward(visitedLocation, a, getRewardPoints(a,user))));
 			}
-		}
+		}, Executors.newSingleThreadExecutor());
 	}
 	
 	public boolean isWithinAttractionProximity(Attraction attraction, Location location) {

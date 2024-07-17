@@ -1,5 +1,6 @@
 package com.openclassrooms.tourguide.service;
 
+import com.openclassrooms.tourguide.DTO.NearByAttraction;
 import com.openclassrooms.tourguide.helper.InternalTestHelper;
 import com.openclassrooms.tourguide.tracker.Tracker;
 import com.openclassrooms.tourguide.user.User;
@@ -8,6 +9,9 @@ import com.openclassrooms.tourguide.user.UserReward;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -20,6 +24,7 @@ import gpsUtil.location.Attraction;
 import gpsUtil.location.Location;
 import gpsUtil.location.VisitedLocation;
 
+import rewardCentral.RewardCentral;
 import tripPricer.Provider;
 import tripPricer.TripPricer;
 
@@ -52,9 +57,9 @@ public class TourGuideService {
 		return user.getUserRewards();
 	}
 
-	public VisitedLocation getUserLocation(User user) {
+	public VisitedLocation getUserLocation(User user) throws ExecutionException, InterruptedException {
 		VisitedLocation visitedLocation = (user.getVisitedLocations().size() > 0) ? user.getLastVisitedLocation()
-				: trackUserLocation(user);
+				: trackUserLocation(user).get();
 		return visitedLocation;
 	}
 
@@ -62,9 +67,14 @@ public class TourGuideService {
 		return internalUserMap.get(userName);
 	}
 
+	public User getUserByUUID(UUID uuid) {
+		return internalUserMap.values().stream().filter(user -> user.getUserId().equals(uuid)).findAny().orElseThrow(() -> new Error("User introuvable"));
+	}
+
 	public List<User> getAllUsers() {
 		return internalUserMap.values().stream().collect(Collectors.toList());
 	}
+
 
 	public void addUser(User user) {
 		if (!internalUserMap.containsKey(user.getUserName())) {
@@ -81,17 +91,25 @@ public class TourGuideService {
 		return providers;
 	}
 
-	public VisitedLocation trackUserLocation(User user) {
-		VisitedLocation visitedLocation = gpsUtil.getUserLocation(user.getUserId());
-		user.addToVisitedLocations(visitedLocation);
-		rewardsService.calculateRewards(user);
-		return visitedLocation;
+	public CompletableFuture<VisitedLocation> trackUserLocation(User user) {
+		return CompletableFuture.supplyAsync(()->{
+			VisitedLocation visitedLocation = gpsUtil.getUserLocation(user.getUserId());
+			user.addToVisitedLocations(visitedLocation);
+			rewardsService.calculateRewards(user);
+			return visitedLocation;
+		}, Executors.newSingleThreadExecutor());
 	}
 
-	public List<Attraction> getNearByAttractions(VisitedLocation visitedLocation) {
+
+	public List<NearByAttraction> getNearByAttractions(VisitedLocation visitedLocation) {
 		List<Attraction> attractions = gpsUtil.getAttractions();
-		return attractions.stream()
-				.sorted(Comparator.comparingDouble(attraction -> rewardsService.getDistance(visitedLocation.location, new Location(attraction.latitude, attraction.longitude))))
+		return attractions.stream().map(attraction -> {
+			Location attractionLocation = new Location(attraction.latitude, attraction.longitude);
+			Double distance = rewardsService.getDistance(visitedLocation.location, attractionLocation);
+			int rewardPoint = rewardsService.getRewardsCentral().getAttractionRewardPoints(attraction.attractionId,visitedLocation.userId);
+			return new NearByAttraction(attraction.attractionName, attractionLocation, visitedLocation.location, distance, rewardPoint);
+		})
+				.sorted(Comparator.comparingDouble(NearByAttraction::distance))
 				.limit(5)
 				.collect(Collectors.toList());
 	}
