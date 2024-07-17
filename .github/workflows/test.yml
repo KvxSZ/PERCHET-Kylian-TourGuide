@@ -37,6 +37,12 @@ jobs:
           with:
             java-version: '17'
             distribution: 'temurin'
+        - name: Library gpsUtils
+          run: mvn install:install-file -Dfile=TourGuide/libs/gpsUtil.jar -DgroupId=gpsUtil -DartifactId=gpsUtil -Dversion=1.0.0 -Dpackaging=jar
+        - name: Library rewardCentral 
+          run: mvn install:install-file -Dfile=TourGuide/libs/RewardCentral.jar -DgroupId=rewardCentral -DartifactId=rewardCentral -Dversion=1.0.0 -Dpackaging=jar
+        - name: Library tripPricer 
+          run: mvn install:install-file -Dfile=TourGuide/libs/TripPricer.jar -DgroupId=tripPricer -DartifactId=tripPricer -Dversion=1.0.0 -Dpackaging=jar
         - name: Verify with Maven
           run: mvn --batch-mode --update-snapshots verify -f TourGuide/pom.xml
         - name: Create staging directory and copy JAR
